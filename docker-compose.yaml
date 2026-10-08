@@ -1,18 +1,6 @@
-version: "3.9"
-
-x-base-service: &base
-  image: node:18-slim
-  entrypoint: sh
-  working_dir: /app
-  volumes:
-    - .:/app
-    - /app/node_modules
-
 services:
   redis:
     image: redis:6
-    ports:
-      - 6379:6379
 
   db:
     image: postgres:13
@@ -21,109 +9,106 @@ services:
       POSTGRES_USER: duelyst
       POSTGRES_PASSWORD: duelyst
       POSTGRES_DB: duelyst
-    ports:
-      - 5432:5432
     volumes:
-      - ./.pgdata:/var/lib/postgresql/data
-
-  adminer:
-    image: adminer
-    profiles:
-      - donotstart
-    restart: always
-    ports:
-      - 8080:8080
-    environment:
-      POSTGRES_CONNECTION: "pg://duelyst:duelyst@db/duelyst"
-    depends_on:
-      - db
+      - ./.pgdata:/var/lib/postgresql/data:z
 
   api:
-    <<: *base
-    ports:
-      - 3000:3000
+    build:
+      context: .
+      dockerfile: docker/api.Dockerfile
+    working_dir: /duelyst
+    ports: [3000:3000]
+    volumes:
+      - ./dist/src:/duelyst/dist/src:z # Serve frontend via API in localdev.
     environment:
-      REDIS_HOST: redis
-      POSTGRES_CONNECTION: "pg://duelyst:duelyst@db/duelyst"
-      FIREBASE_URL: ${FIREBASE_URL}
+      FIREBASE_CLIENT_EMAIL: ${FIREBASE_CLIENT_EMAIL}
       FIREBASE_LEGACY_TOKEN: ${FIREBASE_LEGACY_TOKEN}
-    command: docker/start.sh api
-    depends_on:
-      - db
-      - redis
+      FIREBASE_PRIVATE_KEY: ${FIREBASE_PRIVATE_KEY}
+      FIREBASE_PROJECT_ID: ${FIREBASE_PROJECT_ID}
+      FIREBASE_URL: ${FIREBASE_URL}
+      POSTGRES_CONNECTION: "pg://duelyst:duelyst@db/duelyst"
+      REDIS_HOST: redis
+    depends_on: [db, redis]
 
   game:
-    <<: *base
-    ports:
-      - 8001:8001
+    build:
+      context: .
+      dockerfile: docker/game.Dockerfile
+    working_dir: /duelyst
+    ports: [8001:8001]
     environment:
       REDIS_HOST: redis
-      FIREBASE_URL: ${FIREBASE_URL}
       FIREBASE_LEGACY_TOKEN: ${FIREBASE_LEGACY_TOKEN}
-    command: docker/start.sh game
-    depends_on:
-      - redis
+    depends_on: [redis]
 
   sp:
-    <<: *base
-    ports:
-      - 8000:8000
+    build:
+      context: .
+      dockerfile: docker/sp.Dockerfile
+    working_dir: /duelyst
+    ports: [8000:8000]
     environment:
       REDIS_HOST: redis
-      FIREBASE_URL: ${FIREBASE_URL}
       FIREBASE_LEGACY_TOKEN: ${FIREBASE_LEGACY_TOKEN}
-    command: docker/start.sh sp
-    depends_on:
-      - redis
+    depends_on: [redis]
 
   worker:
-    <<: *base
+    build:
+      context: .
+      dockerfile: docker/worker.Dockerfile
+    working_dir: /duelyst
     environment:
-      REDIS_HOST: redis
-      POSTGRES_CONNECTION: "pg://duelyst:duelyst@db/duelyst"
+      FIREBASE_CLIENT_EMAIL: ${FIREBASE_CLIENT_EMAIL}
+      FIREBASE_PRIVATE_KEY: ${FIREBASE_PRIVATE_KEY}
+      FIREBASE_PROJECT_ID: ${FIREBASE_PROJECT_ID}
       FIREBASE_URL: ${FIREBASE_URL}
-      FIREBASE_LEGACY_TOKEN: ${FIREBASE_LEGACY_TOKEN}
-    command: docker/start.sh worker
-    depends_on:
-      - db
-      - redis
+      POSTGRES_CONNECTION: "pg://duelyst:duelyst@db/duelyst"
+      REDIS_HOST: redis
+    depends_on: [db, redis]
 
   worker-ui:
-    <<: *base
-    profiles:
-      - donotstart
-    ports:
-      - 4000:4000
-    command: docker/start.sh worker-ui
-    depends_on:
-      - worker
+    build:
+      context: .
+      dockerfile: docker/general.Dockerfile
+    working_dir: /duelyst
+    environment:
+      REDIS_HOST: redis
+    profiles: [donotstart]
+    ports: [4000:4000]
+    entrypoint: ["yarn", "worker-ui"]
+    depends_on: [redis]
 
   migrate:
-    <<: *base
-    profiles:
-      - donotstart
+    build:
+      context: .
+      dockerfile: docker/migrate.Dockerfile
+    working_dir: /duelyst
+    profiles: [donotstart]
     environment:
       NODE_ENV: development
       POSTGRES_CONNECTION: "pg://duelyst:duelyst@db/duelyst"
-    depends_on:
-      - db
-    command: docker/start.sh migrate:latest
+    depends_on: [db]
 
   test-unit:
-    <<: *base
-    profiles:
-      - donotstart
-    command: docker/start.sh test:unit
+    build:
+      context: .
+      dockerfile: docker/general.Dockerfile
+    working_dir: /duelyst
+    profiles: [donotstart]
+    entrypoint: ["yarn", "test:unit"]
 
   test-integration:
-    <<: *base
-    profiles:
-      - donotstart
+    build:
+      context: .
+      dockerfile: docker/general.Dockerfile
+    working_dir: /duelyst
+    profiles: [donotstart]
     environment:
-      REDIS_HOST: redis
-      POSTGRES_CONNECTION: "pg://duelyst:duelyst@db/duelyst"
+      FIREBASE_CLIENT_EMAIL: ${FIREBASE_CLIENT_EMAIL}
+      FIREBASE_PRIVATE_KEY: ${FIREBASE_PRIVATE_KEY}
+      FIREBASE_PROJECT_ID: ${FIREBASE_PROJECT_ID}
       FIREBASE_URL: ${FIREBASE_URL}
-    command: docker/start.sh test:integration
-    depends_on:
-      - db
-      - redis
+      POSTGRES_CONNECTION: "pg://duelyst:duelyst@db/duelyst"
+      REDIS_HOST: redis
+    depends_on: [db, redis]
+    entrypoint: ["yarn", "test:integration"]

@@ -19,7 +19,7 @@ on:
 jobs:
   integration_tests:
     runs-on: ubuntu-latest
-    container: node:18-slim
+    container: node:24-bookworm-slim
     services:
       redis:
         image: redis:6
@@ -31,9 +31,6 @@ jobs:
           POSTGRES_DB: duelyst
 
     steps:
-    - name: install bcrypt dependencies and git
-      run: apt-get update && apt-get -y install python3 make gcc g++ git
-
     - name: check out code
       uses: actions/checkout@v3
 
@@ -47,13 +44,11 @@ jobs:
         restore-keys: |
           node-modules-
 
-    - name: redirect git ssh to https
-      run: |
-        git config --global url."https://github.com/".insteadOf git@github.com:
-        git config --global url."https://".insteadOf git://
+    - name: enable corepack
+      run: corepack enable
 
     - name: install node dependencies
-      run: yarn install --dev
+      run: yarn workspaces focus
 
     - name: run database migrations
       run: yarn migrate:latest
